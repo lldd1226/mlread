@@ -11,8 +11,8 @@
         "statusCode": 301
       },
       {
-        "source": "/en/:path",
-        "destination": "https://en.491007.xyz/:path",
+        "source": "/en/*",
+        "destination": "https://en.491007.xyz/:splat",
         "statusCode": 301
       }
     ]
