@@ -9,6 +9,11 @@
         "source": "/en",
         "destination": "https://en.491007.xyz",
         "statusCode": 301
+      },
+      {
+        "source": "/en/:path",
+        "destination": "https://en.491007.xyz/:path",
+        "statusCode": 301
       }
     ]
 }
