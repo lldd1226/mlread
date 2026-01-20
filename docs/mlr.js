@@ -4,7 +4,8 @@ const ALLOWED_PATHS = [
   /\/MEW-ZH\/.+/,     
   /\/MEW\/.+/,        
   /\/MEA\/.+/,        
-  /\/VIL\/.+/
+  /\/VIL\/.+/,
+  /\/en\/.+/
 ];
 
 function isPathAllowed() {
