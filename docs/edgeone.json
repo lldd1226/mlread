@@ -14,6 +14,11 @@
         "source": "/en/*",
         "destination": "https://en.491007.xyz/:splat",
         "statusCode": 301
+      },
+      {
+        "source": "/ru/*",
+        "destination": "https://ru.491007.xyz/:splat",
+        "statusCode": 301
       }
     ]
 }
