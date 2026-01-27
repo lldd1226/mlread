@@ -43,7 +43,7 @@ a b,b a {
   text-decoration: underline;
 }
 a:visited  b,b a:visited{
-  color:  #8597AE
+  color:  #8597AE;
 }
 
 a:hover b, a:focus b ,b a:focus, b a:hover{
@@ -53,6 +53,5 @@ a:hover b, a:focus b ,b a:focus, b a:hover{
 a:active b,b a:active {
   color:  #ff6b6b; 
 }
-
 }
 
