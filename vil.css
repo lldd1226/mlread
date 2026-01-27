@@ -1,4 +1,4 @@
-BODY {color:#2D3A53;background-color:#EEF0F5;-webkit-hyphens: auto;-moz-hyphens: auto; -ms-hyphens: auto; hyphens: auto;text-align: justify;text-justify: inter-word;margin-left:10%;margin-right:10%;font-family:Arial,Helvetica,sans-serif,"Times New Roman";line-height:200%;font-size:1.25em;}
+BODY {color:#2D3A53;background-color:#EEF0F5;-webkit-hyphens: auto;-moz-hyphens: auto; -ms-hyphens: auto; hyphens: auto;text-align: justify;text-justify: inter-word;margin-left:5%;margin-right:5%;font-family:Arial,Helvetica,sans-serif,"Times New Roman";line-height:200%;font-size:1.25em;}
 TD P {margin-left:1%;margin-right:1%}
 .wde {margin-left:0;margin-right:0}
 TABLE{margin-left:0;margin-right:0}
@@ -28,9 +28,9 @@ a:hover, a:focus {color:#1E40AF;}/*#2563EB;#6B7280*/
 }
 @media (prefers-color-scheme: dark) {
   body {
-    background-color: #121212;
-    color: #e0e0e0;
-  background-color: #FAFAF8;}
+    background-color: #1e1e1e;
+color:rgba(224,224,224,0.75);
+}
 a {
   color: #79c0ff;  
   text-decoration: underline;
