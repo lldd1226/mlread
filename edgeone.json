@@ -1,16 +1,29 @@
 {
-    "rewrites": [
+    "redirects": [
       {
         "source": "/epub/:id",
-        "destination": "https://491007.xyz/epub/:id"
+        "destination": "https://491007.xyz/epub/:id",
+        "statusCode": 301
+      },
+      {
+        "source": "/en",
+        "destination": "https://en.491007.xyz",
+        "statusCode": 301
       },
       {
         "source": "/en/*",
-        "destination": "https://en.491007.xyz/:splat"
+        "destination": "https://en.491007.xyz/:splat",
+        "statusCode": 301
       },
       {
         "source": "/ru/*",
-        "destination": "https://ru.491007.xyz/:splat"
+        "destination": "https://ru.491007.xyz/:splat",
+        "statusCode": 301
+      },
+      {
+        "source": "/de/*",
+        "destination": "https://de.491007.xyz/:splat",
+        "statusCode": 301
       }
     ]
 }
