@@ -21,13 +21,13 @@
         "statusCode": 301
       },
       {
-        "source": "/de/*",
-        "destination": "https://de.491007.xyz/:splat",
+        "source": "/MEW/*",
+        "destination": "https://ml.491007.xyz/:splat",
         "statusCode": 301
       },
       {
-        "source": "/MEW/*",
-        "destination": "https://de.491007.xyz/:splat",
+        "source": "/HEGEL/*",
+        "destination": "https://ml.491007.xyz/HEGEL/:splat",
         "statusCode": 301
       }
     ]
