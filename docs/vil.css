@@ -21,9 +21,9 @@ blockquote p {line-height:150%;}
 .bor {border-width:1; border-style:solid}
 .bordn {border-width:1; border-style:solid; border-top-style:none}
 .borup {border-width:1; border-style:solid; border-bottom-style:none}
-a {color:#2563EB;text-decoration: underline;}/*#1A0DAB;*/
+a {color:#2563EB;text-decoration: none;}/*#1A0DAB;*/
 a:visited {color:#4B6CB7}
-a:hover, a:focus {color:#1E40AF;}/*#2563EB;#6B7280*/
+a:hover, a:focus {color:#1E40AF;text-decoration: underline;}/*#2563EB;#6B7280*/
 .table-wrapper {
   overflow-x: auto;
   max-width: 100%;
