@@ -10,7 +10,7 @@ blockquote p {line-height:150%;}
 .quote,blockquote,.footnote {margin: 1.5em 0;}
 .footnote,.sign {margin-top:2em;}
 table.quote,table.footnote,blockquote table,.add td,.src td {font-size: 0.75em;margin: 1.5em auto;line-height:150%;}
-.style2 {font-weight:bold;font-size: 1.25em;}
+.style2 {font-weight:bold;font-size: 1.25rem;}
 .date,.style3 {font-size: 0.75em;text-align:center;margin-top:0;margin-bottom:2em;}
 .TCC {width: 20%;font-size: 0.75em;text-align:justify;margin:1em auto;}
 .TOC {width: 85%;text-align:justify;margin:2em auto;}
