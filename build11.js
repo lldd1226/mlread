@@ -15,7 +15,7 @@ try { cheerio = require('cheerio'); } catch (e) { console.log('Tip: cheerio not 
 class ConfigLoader {
   constructor() {
     const args = {
-      input: '.', output: 'dist', baseUrl: '', logo: '/favicon.ico', logoText: 'MLCLASSIC',
+      input: '.', output: 'dist', baseUrl: '', logo: '', logoText: 'MLREAD',
       concurrency: 4, config: './libmap.js', only: [], skip: [],
       copyOnly: ['en/archive/', 'en/history/', 'docs/VIL/', 'docs/MEW/', 'ru/VIL-UAIO/'],
       template: './template.js', mitt: '', mps:''
