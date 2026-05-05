@@ -62,12 +62,12 @@ hr {
     margin: 1em auto 1em auto;
     text-align:center;
 }
-.cover-image {
+.cover-image {{
             max-width: 100%;
             height: auto;
             margin: 20px 0;
             box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
+        }}
 .remark {
     display: block;
     margin-left: 6.25%;
