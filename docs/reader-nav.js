@@ -555,8 +555,16 @@ class MenuManager {
 
         let match = tree.querySelector(`.sidebar-link[data-id="${CSS.escape(id)}"]`);
         if (!match) {
-            const candidates = links.filter(a => (a.dataset.file || '').replace(/\.html$/i, '') === currentFile && a.dataset.id);
-            if (candidates.length) match = candidates[candidates.length - 1];
+            const fileLink = links.find(a =>
+                (a.dataset.file || '').replace(/\.html$/i, '') === currentFile && !a.dataset.id
+            );
+            match = fileLink;
+            if (!match) {
+                const candidates = links.filter(a =>
+                    (a.dataset.file || '').replace(/\.html$/i, '') === currentFile && a.dataset.id
+                );
+                if (candidates.length) match = candidates[candidates.length - 1];
+            }
         }
         if (match) { match.classList.add('sidebar-link--active'); expandTo(match, tree); }
     }
