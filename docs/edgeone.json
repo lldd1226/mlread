@@ -3,22 +3,22 @@
       {
         "source": "/epub/:id",
         "destination": "https://491007.xyz/epub/:id",
-        "statusCode": 301
+        "statusCode": 302
       },
       {
         "source": "/en",
         "destination": "https://en.491007.xyz",
-        "statusCode": 301
+        "statusCode": 302
       },
       {
         "source": "/en/*",
         "destination": "https://en.491007.xyz/:splat",
-        "statusCode": 301
+        "statusCode": 302
       },
       {
         "source": "/ru/*",
         "destination": "https://ru.491007.xyz/:splat",
-        "statusCode": 301
+        "statusCode": 302
       }
     ]
 }
