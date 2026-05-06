@@ -14,7 +14,16 @@
         "source": "/ru/*",
         "destination": "https://ru.491007.xyz/:splat",
         "statusCode": 302
+      },
+      {
+        "source": "/MEGA/*",
+        "destination": "https://de.491007.xyz/MEGA/:splat",
+        "statusCode": 302
+      },
+      {
+        "source": "/MEW/*",
+        "destination": "https://de.491007.xyz/MEW/:splat",
+        "statusCode": 302
       }
-
     ]
 }
