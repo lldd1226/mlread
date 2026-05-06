@@ -4,7 +4,7 @@
         "source": "/epub/:id",
         "destination": "https://491007.xyz/epub/:id",
         "statusCode": 302
-      }
+      },
       {
         "source": "/en/*",
         "destination": "https://en.491007.xyz/:splat",
