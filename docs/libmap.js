@@ -120,7 +120,8 @@ window.LIBRARY_CONFIG = [
             {
                 label: 'Ergänzung (Bände 40-43)',
                 items: [
-                    { label: 'Band 40 (Karl Marx: Schriften und Briefe, November 1837 bis August 1844)', path: '/MEW/40/index.html' }
+                    { label: 'Band 40 (Karl Marx: Schriften und Briefe, November 1837 bis August 1844)', path: '/MEW/40/index.html' },
+                    { label: 'Band 42 (Karl Marx: Ökonomische Manuskripte 1857/1858', path: '/MEW/42/index.html' }
                 ]
             }
         ]
@@ -213,7 +214,7 @@ window.LIBRARY_CONFIG = [
         badge: 'DE',
         path: '/MEGA/index.html',
         groups: [
-            {label:'Digitalisierung „Neue Rheinische Zeitung“',path:'/MEGA/nrhz/index.html'},
+            {label: 'Digitalisierung „Neue Rheinische Zeitung“', path: '/MEGA/nrhz/index.html' },
             {
                 label: 'II. Abteilung: "DAS KAPITAL" UND VORARBEITEN',
                 stylesheets: ['/MEGA/II/MEGA.css'],
@@ -564,7 +565,7 @@ window.LIBRARY_CONFIG = [
         label: 'Github',
         title: 'Github仓库',
         desc: 'Github仓库地址',
-        path: 'https://github.com/lldd1226/mlread'
+        path: 'https://github.com/MARX-ZH-CN/marx-zh-cn.github.io'
     },
     {
         id: 'link',
