@@ -564,7 +564,7 @@ window.LIBRARY_CONFIG = [
         label: 'Github',
         title: 'Github仓库',
         desc: 'Github仓库地址',
-        path: 'https://github.com/MARX-ZH-CN/marx-zh-cn.github.io'
+        path: 'https://github.com/lldd1226/mlread'
     },
     {
         id: 'link',
