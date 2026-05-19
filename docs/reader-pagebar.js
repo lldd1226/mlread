@@ -7,6 +7,8 @@ class PageBarManager {
     this._io = null;
     this._citationPopoverTimer = null;
     this._dismissPopoverHandler = null;
+    this._pageMarkerEl = null;
+    this._pageMarkerTimer = null;
   }
 
   init() {
@@ -18,8 +20,8 @@ class PageBarManager {
     if (!container) { this._reset(); return; }
     this.pageNumbers = [];
     container.querySelectorAll('a[id^="S"]').forEach(a => {
-      const m = a.id.match(/^S([\d-]+)$/);
-      if (m) this.pageNumbers.push({ id: a.id, number: parseInt(m[1], 10), el: a });
+      const pageInfo = this._parsePageAnchor(a.id);
+      if (pageInfo) this.pageNumbers.push({ id: a.id, ...pageInfo, el: a });
     });
 
     this.hasPageAnchors = this.pageNumbers.length > 0;
@@ -35,6 +37,7 @@ class PageBarManager {
     this.pageNumbers = [];
     this.currentPage = null;
     this.hasPageAnchors = false;
+    this._clearPageMarker();
     this._updateBadge(null);
   }
 
@@ -51,7 +54,7 @@ class PageBarManager {
         .filter(Boolean);
       if (visible.length) {
         visible.sort((a, b) => a.top - b.top);
-        this.currentPage = visible[0].number;
+        this.currentPage = visible[0];
         this._updateBadge(this.currentPage);
       }
     }, { root: null, rootMargin: '-40% 0px -40% 0px', threshold: 0 });
@@ -62,19 +65,149 @@ class PageBarManager {
     if (this._io) { this._io.disconnect(); this._io = null; }
   }
 
-  _updateBadge(page) {
+  _parsePageAnchor(id) {
+    const plain = id.match(/^S(\d+)$/);
+    if (plain) {
+      return {
+        page: plain[1],
+        label: plain[1],
+        citePage: plain[1]
+      };
+    }
+
+    const scoped = id.match(/^S(.+?)-p?(\d+)$/i);
+    if (scoped) {
+      const scope = scoped[1].replace(/^[-_]+|[-_]+$/g, '');
+      const page = scoped[2];
+      return {
+        scope,
+        page,
+        label: `${scope}, S. ${page}`,
+        citePage: `${scope}, S. ${page}`
+      };
+    }
+
+    return null;
+  }
+
+  _updateBadge(pageInfo) {
     const link = document.getElementById('page-breadcrumb-link');
     if (link) {
-      if (page !== null && page !== undefined) {
-        link.textContent = 'S. ' + page;
+      if (pageInfo !== null && pageInfo !== undefined) {
+        const info = typeof pageInfo === 'object' ? pageInfo : { label: pageInfo, citePage: pageInfo };
+        link.textContent = info.scope ? info.label : 'S. ' + info.label;
         link.style.display = '';
-        link.dataset.page = page;
+        link.dataset.page = info.citePage || info.label;
+        if (info.id) link.dataset.pageAnchorId = info.id;
         this._bindCopy(link);
       } else {
         link.textContent = '';
         link.style.display = 'none';
+        delete link.dataset.pageAnchorId;
       }
     }
+  }
+
+  _clearPageMarker() {
+    clearTimeout(this._pageMarkerTimer);
+    this._pageMarkerTimer = null;
+    if (this._pageMarkerEl) {
+      this._pageMarkerEl.remove();
+      this._pageMarkerEl = null;
+    }
+  }
+
+  _resolvePageInfo(target) {
+    if (!target) return this.currentPage;
+    if (typeof target === 'object') return target;
+
+    const id = String(target).replace(/^#/, '');
+    const known = this.pageNumbers.find(p => p.id === id);
+    if (known) return known;
+
+    const anchor = document.getElementById(id);
+    const pageInfo = this._parsePageAnchor(id);
+    return anchor && pageInfo ? { id, ...pageInfo, el: anchor } : null;
+  }
+
+  highlightPageAnchor(target, options = {}) {
+    const info = this._resolvePageInfo(target);
+    if (!info) return false;
+    this.currentPage = info;
+    this._updateBadge(info);
+    this._highlightPageAnchor(info, options);
+    return true;
+  }
+
+  _highlightPageAnchor(pageInfo, options = {}) {
+    const shouldScroll = options.scroll !== false;
+    const info = this._resolvePageInfo(pageInfo);
+    const anchor = info?.el || (info?.id ? document.getElementById(info.id) : null);
+    if (!anchor) return false;
+
+    if (shouldScroll) {
+      if (typeof window.scrollToEl === 'function') {
+        window.scrollToEl(anchor);
+      } else {
+        anchor.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+
+    this._clearPageMarker();
+
+    const marker = document.createElement('div');
+    marker.setAttribute('role', 'status');
+    marker.setAttribute('aria-live', 'polite');
+    marker.textContent = info.scope ? info.label : 'S. ' + info.label;
+
+    document.body.appendChild(marker);
+    this._pageMarkerEl = marker;
+
+    const positionMarker = () => {
+      if (!this._pageMarkerEl || !anchor.isConnected) return;
+      const anchorRect = anchor.getClientRects()[0] || anchor.getBoundingClientRect();
+      const contentRect = document.getElementById('content')?.getBoundingClientRect();
+      const rawTop = anchorRect.top + scrollY;
+      const rawLeft = anchorRect.left + scrollX;
+      const top = Math.max(0, rawTop);
+      const left = Number.isFinite(rawLeft) && rawLeft > 0
+        ? rawLeft
+        : Math.max(8, (contentRect?.left ?? 24) + scrollX);
+      marker.style.cssText = `
+        position: absolute;
+        top: ${top}px;
+        left: ${left}px;
+        max-width: min(240px, calc(100vw - ${Math.max(16, left - scrollX + 16)}px));
+        padding: 7px 11px;
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--surface, #ffffff) 92%, #fff7cc);
+        border: 1px solid rgba(211, 155, 22, .6);
+        border-left: 4px solid #d39b16;
+        color: var(--text, #241a05);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
+        font: 700 13px/1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        white-space: nowrap;
+        transform: translateY(-50%);
+        z-index: 450;
+        pointer-events: none;
+        opacity: 1;
+        transition: opacity 220ms ease, transform 220ms ease;
+      `;
+    };
+
+    positionMarker();
+    setTimeout(positionMarker, 320);
+    setTimeout(positionMarker, 720);
+
+    this._pageMarkerTimer = setTimeout(() => {
+      if (marker.isConnected) {
+        marker.style.opacity = '0';
+        marker.style.transform = 'translateY(-50%) scale(.98)';
+      }
+      this._pageMarkerTimer = setTimeout(() => this._clearPageMarker(), 260);
+    }, 2600);
+
+    return true;
   }
 
   _findVolumeCitation(path) {
@@ -119,6 +252,12 @@ class PageBarManager {
     return null;
   }
 
+  _formatCitationPage(page, pageParam) {
+    const pageText = String(page);
+    if (/(^|,\s)(S|p)\.\s/i.test(pageText)) return pageText;
+    return pageParam.replace('${page}', pageText);
+  }
+
   _generateCitation(page) {
     const cit = this._findVolumeCitation(state.doc);
 
@@ -130,19 +269,20 @@ class PageBarManager {
       if (cit.publisher) text += (text ? ', ' : '') + cit.publisher;
       if (cit.year) text += (text ? ' ' : '') + `${cit.year}`;
       const pageParam = cit.pageParam || 'S. ${page}';
-      text += (text ? ', ' : '') + pageParam.replace('${page}', page);
+      text += (text ? ', ' : '') + this._formatCitationPage(page, pageParam);
       return text;
     }
 
     // 全集级 fallback：按 collection id 匹配
     const col = findCollection(state.doc);
     const id = col?.id || '';
-    if (id === 'mew') return `MEW, S. ${page}`;
-    if (id === 'mega') return `MEGA², S. ${page}`;
-    if (id === 'mecw') return `MECW, p. ${page}`;
-    if (id === 'hegel') return `G.W.F.Hegel Werke, S. ${page}`;
-    if (id === 'mlclassic') return `MLCLASSIC, S. ${page}`;
-    return `${id ? id.toUpperCase() + ', ' : ''}S. ${page}`;
+    const pageText = this._formatCitationPage(page, 'S. ${page}');
+    if (id === 'mew') return `MEW, ${pageText}`;
+    if (id === 'mega') return `MEGA², ${pageText}`;
+    if (id === 'mecw') return `MECW, ${this._formatCitationPage(page, 'p. ${page}')}`;
+    if (id === 'hegel') return `G.W.F.Hegel Werke, ${pageText}`;
+    if (id === 'mlclassic') return `MLCLASSIC, ${pageText}`;
+    return `${id ? id.toUpperCase() + ', ' : ''}${pageText}`;
   }
 
   _showCitationPopover(triggerEl) {
@@ -220,8 +360,9 @@ class PageBarManager {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      const page = parseInt(e.currentTarget.dataset.page, 10);
-      if (!page && page !== 0) return;
+      const page = e.currentTarget.dataset.page;
+      if (!page) return;
+      this.highlightPageAnchor(e.currentTarget.dataset.pageAnchorId || this.currentPage);
       const citation = this._generateCitation(page);
       e.currentTarget.dataset.citation = citation;
       if (navigator.clipboard && navigator.clipboard.writeText) {
