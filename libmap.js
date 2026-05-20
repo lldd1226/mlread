@@ -211,7 +211,7 @@ window.LIBRARY_CONFIG = [
         id: 'mega',
         label: 'MEGA2',
         title: 'KARL MARX FRIEDRICH ENGELS GESAMTAUSGABE (von BBAW)',
-        desc: 'ZWEITE ABTEILUNG',
+        desc: 'ZWEITE ABTEILUNG (von BBAW)',
         basePath: '/MEGA/',
         badge: 'DE',
         path: '/MEGA/index.html',
