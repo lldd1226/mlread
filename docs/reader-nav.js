@@ -1,9 +1,6 @@
 (function () {
   'use strict';
 
-  const doc = document;
-  const win = window;
-
   class EventBag {
     constructor() { this._off = []; }
     on(target, type, handler, options) {
@@ -18,14 +15,14 @@
     }
   }
 
-  const $ = (selector, root = doc) => root.querySelector(selector);
-  const $$ = (selector, root = doc) => Array.from(root.querySelectorAll(selector));
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const esc = value => String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-  const cssEsc = value => (win.CSS?.escape ? CSS.escape(String(value)) : String(value).replace(/["\\]/g, '\\$&'));
+  const cssEsc = value => (window.CSS?.escape ? CSS.escape(String(value)) : String(value).replace(/["\\]/g, '\\$&'));
   const normalizePath = value => String(value || '')
     .replace(/^https?:\/\/[^/]+/i, '')
     .replace(/[?#].*$/, '')
@@ -33,7 +30,7 @@
     .replace(/\/+$/, '');
   const normalizeDoc = value => normalizePath(value).replace(/\.html$/i, '');
   const hasSelection = () => {
-    const selection = doc.getSelection();
+    const selection = document.getSelection();
     return !!(selection && !selection.isCollapsed && selection.rangeCount);
   };
   const resolveUrl = href => {
@@ -42,7 +39,7 @@
   };
   const scrollToEl = (el, offset = 80, behavior = 'smooth') => {
     if (!el) return;
-    win.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + scrollY - offset), behavior });
+    window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + scrollY - offset), behavior });
   };
   const syncFill = el => {
     if (!el) return;
@@ -58,7 +55,7 @@
     scrollFrame = 0;
     scrollCallbacks.forEach(fn => fn());
   };
-  win.addEventListener('scroll', () => {
+  window.addEventListener('scroll', () => {
     if (!scrollFrame) scrollFrame = requestAnimationFrame(runScrollCallbacks);
   }, { passive: true });
   const onScrollFrame = fn => {
@@ -69,10 +66,11 @@
   function resolveCssHref(href, base) {
     if (!href) return '';
     if (/^(https?:|\/\/)/i.test(href)) return href;
-    if (href.startsWith('/')) return href.slice(1);
+    if (href.startsWith('/')) return href;
     try {
       const dir = String(base || '').replace(/^\/+/, '').replace(/\/?$/, '/');
-      return new URL(href, location.origin + '/' + dir).pathname.replace(/^\/+/, '');
+      const url = new URL(href, new URL(dir, location.href));
+      return url.pathname + url.search + url.hash;
     } catch {
       return [String(base || '').replace(/^\/+|\/+$/g, ''), href.replace(/^\.+\//, '')].filter(Boolean).join('/');
     }
@@ -80,7 +78,7 @@
 
   function findCollection(path) {
     const norm = normalizePath(path);
-    return (win.LIBRARY_CONFIG || []).find(col => {
+    return (window.LIBRARY_CONFIG || []).find(col => {
       const base = normalizePath(col.basePath || col.basepath || `/${col.id}/`);
       return base && norm.startsWith(base);
     }) || null;
@@ -132,13 +130,21 @@
 
     let data = null;
     try {
-      const res = await fetch('/' + cleanDir + '/index.json');
+      const res = await fetch(new URL(cleanDir + '/index.json', location.href).href);
       if (res.ok) data = await res.json();
     } catch { }
 
     if (!data) {
       try {
-        const mod = await import('/' + cleanDir + '/index.js');
+        const jsUrl = new URL(cleanDir + '/index.js', location.href).href;
+        const res = await fetch(jsUrl);
+        const type = res.headers.get('content-type') || '';
+        if (!res.ok || /text\/html/i.test(type)) return null;
+        const js = await res.text();
+        if (!/\bexport\s+default\b/.test(js)) return null;
+        const blobUrl = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }));
+        const mod = await import(blobUrl);
+        URL.revokeObjectURL(blobUrl);
         data = mod?.default || null;
       } catch { }
     }
@@ -167,6 +173,7 @@
       this.headings = this.getHeadings();
       if (!this.headings.length) return false;
       this.measure();
+      // 阅读器内容可能异步注入，图片和字体也会改变高度，所以启动后需要重新测量标题位置。
       const queueMeasure = () => {
         if (!this.frame) this.frame = requestAnimationFrame(() => {
           this.frame = 0;
@@ -174,8 +181,8 @@
           this.track(true);
         });
       };
-      this.bag.on(win, 'resize', queueMeasure, { passive: true });
-      this.bag.on(win, 'load', queueMeasure, { once: true });
+      this.bag.on(window, 'resize', queueMeasure, { passive: true });
+      this.bag.on(window, 'load', queueMeasure, { once: true });
       setTimeout(queueMeasure, 500);
       this.offScroll = onScrollFrame(() => this.track(false));
       this.track(true);
@@ -205,6 +212,7 @@
     pick() {
       if (!this.tops.length) return this.headings[0]?.id || null;
       const y = scrollY + this.threshold;
+      // 滚动时用二分查找定位当前标题，保证长文档里追踪仍然轻量。
       let lo = 0;
       let hi = this.tops.length - 1;
       let best = 0;
@@ -228,7 +236,7 @@
     getDomHeadings, getActiveHeadingId, buildHeadingTree, expandTo, fetchVolData
   };
 
-  Object.assign(win, {
+  Object.assign(window, {
     ReaderCore: Core,
     $, $$,
     on: (target, type, handler, options) => target && target.addEventListener(type, handler, options || false),
@@ -247,7 +255,7 @@
     onScrollFrame
   });
 
-  const currentDoc = () => (win.ReaderState?.doc || (typeof state !== 'undefined' ? state.doc : null) || '');
+  const currentDoc = () => (window.ReaderState?.doc || (typeof state !== 'undefined' ? state.doc : null) || '');
 
   class MenuManager {
     constructor() {
@@ -281,6 +289,7 @@
       this.cleanupRender();
       this.navTree.innerHTML = '';
       this.currentVol = docPath ? this.detectVolume(docPath) : null;
+      // reader 用 ?doc= 表示当前文档：有卷册数据时显示卷册目录，否则按本页/总目录降级。
       if (!docPath) {
         this.mode = 'libmap';
         this.renderLibmapMenu();
@@ -391,11 +400,11 @@
     }
 
     loadSection(item) {
-      const col = (win.LIBRARY_CONFIG || []).find(c => c.id === item.dataset.section);
+      const col = (window.LIBRARY_CONFIG || []).find(c => c.id === item.dataset.section);
       if (!col) return;
       const html = (col.groups || []).map(group => this.renderGroup(group)).join('');
       if (html) {
-        const ul = doc.createElement('ul');
+        const ul = document.createElement('ul');
         ul.className = 'sidebar-menu sidebar-menu--nested';
         ul.innerHTML = html;
         item.appendChild(ul);
@@ -412,7 +421,7 @@
 
     scrollToHash(hash, push) {
       if (!hash) return;
-      const el = doc.getElementById(hash) || doc.querySelector(`[name="${cssEsc(hash)}"]`);
+      const el = document.getElementById(hash) || document.querySelector(`[name="${cssEsc(hash)}"]`);
       if (!el) return;
       scrollToEl(el);
       const url = new URL(location.href);
@@ -421,27 +430,48 @@
     }
 
     detectVolume(docPath) {
-      const docNorm = normalizeDoc(docPath);
-      const docDir = normalizePath(docPath).replace(/\/[^/]+$/, '');
-      for (const col of win.LIBRARY_CONFIG || []) {
+      const pathNorm = normalizePath(docPath);
+      const docNorm = normalizeDoc(pathNorm);
+      const docDir = pathNorm.replace(/\/[^/]+$/, '');
+      const matchPath = path => {
+        if (!path || /^https?:/i.test(path)) return null;
+        const itemPath = normalizePath(path);
+        if (!/\/index\.html$/i.test(itemPath)) return null;
+        const dir = itemPath.replace(/\/index\.html$/i, '').replace(/\/nav\.html$/i, '');
+        return (docNorm === normalizeDoc(itemPath) || docNorm === normalizeDoc(dir) || docDir === dir || pathNorm.startsWith(dir + '/')) ? dir : null;
+      };
+      let best = null;
+      const consider = (col, group, item, dir) => {
+        if (dir && (!best || dir.length > best.dir.length)) best = { col, group, item, dir };
+      };
+      for (const col of window.LIBRARY_CONFIG || []) {
+        consider(col, null, col, matchPath(col.path));
         for (const group of col.groups || []) {
+          consider(col, group, group, matchPath(group.path));
           for (const item of group.items || []) {
-            const itemPath = normalizePath(item.path);
-            if (!/\/index\.html$/i.test(itemPath)) continue;
-            const dir = itemPath.replace(/\/index\.html$/i, '');
-            if (docNorm === normalizeDoc(itemPath) || docDir === dir || normalizePath(docPath).startsWith(dir + '/')) {
-              return { col, group, item, dir };
-            }
+            consider(col, group, item, matchPath(item.path));
           }
         }
       }
-      return null;
+      return best;
+    }
+
+    volumeDocPath(docPath = currentDoc()) {
+      const path = normalizePath(docPath);
+      if (this.currentVol && path === this.currentVol.dir) return this.currentVol.dir + '/index.html';
+      return path;
+    }
+
+    volumeDocFile(docPath = currentDoc()) {
+      return normalizeDoc(this.volumeDocPath(docPath)).split('/').pop() || 'index';
     }
 
     async renderEpubMenu(docPath) {
-      const data = await this.fetchVolumeData(this.currentVol.dir);
+      const dir = this.currentVol?.dir || '';
+      const data = await this.fetchVolumeData(dir);
       if (!data) {
-        this.mode = innerWidth < 997 ? 'page-toc' : 'libmap';
+        const norpath = normalizePath(docPath);
+        this.mode = (norpath === dir || norpath === dir + '/index.html' || norpath === dir + '/nav.html') ? 'libmap' : (innerWidth < 997 ? 'page-toc' : 'libmap');
         this.mode === 'page-toc' ? this.renderPageTocMenu(docPath) : this.renderLibmapMenu();
         this.afterRender(docPath);
         return;
@@ -450,12 +480,12 @@
       this.currentVol.data = data;
       const { col, item } = this.currentVol;
       const colPath = normalizePath(col.path);
-      const volPath = normalizePath(item.path || (this.currentVol.dir + '/index.html'));
-      const parts = [
-        colPath ? { text: col.label, href: '?doc=' + esc(colPath), expand: col.id } : { text: col.label, expand: col.id },
-        { text: item.label || item.title || data.title || 'Contents', href: '?doc=' + esc(volPath) },
-        { id: 'page-breadcrumb-link', isPageBadge: win.__PAGE_BAR__?.hasPageAnchors }
-      ];
+      const parts = [colPath ? { text: col.label, href: '?doc=' + esc(colPath), expand: col.id } : { text: col.label, expand: col.id }];
+      if (item !== col) {
+        const volPath = normalizePath(item.path || (this.currentVol.dir + '/index.html'));
+        parts.push({ text: item.label || item.title || data.title || 'Contents', href: '?doc=' + esc(volPath) });
+      }
+      parts.push({ id: 'page-breadcrumb-link', isPageBadge: window.__PAGE_BAR__?.hasPageAnchors });
       const tree = buildHeadingTree(data.headings || []);
       this.navTree.innerHTML =
         this.renderBreadcrumb(parts) +
@@ -483,7 +513,7 @@
       }));
       const parts = [
         col?.path ? { text: col.label || 'Library', href: '?doc=' + esc(normalizePath(col.path)), expand: col.id } : { text: col?.label || 'Library', expand: col?.id },
-        { text: nodes[0]?.text || doc.title }
+        { text: nodes[0]?.text || document.title }
       ];
       this.navTree.innerHTML =
         this.renderBreadcrumb(parts) +
@@ -504,7 +534,7 @@
       this.startTracking();
       this.initBreadcrumbFade();
       this.scrollToPendingAnchor();
-      if (win.__PAGE_BAR__?.currentPage != null) win.__PAGE_BAR__._updateBadge(win.__PAGE_BAR__.currentPage);
+      if (window.__PAGE_BAR__?.currentPage != null) window.__PAGE_BAR__._updateBadge(window.__PAGE_BAR__.currentPage);
     }
 
     async fetchVolumeData(dir) {
@@ -515,7 +545,7 @@
       const headings = [];
       raw.forEach(file => (file.headings || []).forEach(h => {
         headings.push({
-          level: h.level || 2,
+          level: h.level !== undefined && h.level !== null ? h.level : 2,
           text: h.text || '',
           id: h.id || null,
           file: h.filename || file.file || file.path || ''
@@ -532,14 +562,16 @@
     renderBreadcrumb(parts) {
       return '<div class="breadcrumb" aria-label="Breadcrumb">' + parts.map((part, i) => {
         const sep = i > 0 || part.id === 'page-breadcrumb-link' ? '<span class="breadcrumb__sep">/</span>' : '';
+        if (part.id === 'page-breadcrumb-link' && !part.isPageBadge) return ''
         if (part.id === 'page-breadcrumb-link') return sep + `<a href="#" id="${esc(part.id)}" style="display:none"></a>`;
         if (part.href) return sep + `<a href="${esc(part.href)}"${part.expand ? ` data-expand-section="${esc(part.expand)}"` : ''}>${esc(part.text)}</a>`;
+
         return sep + `<span>${esc(part.text || '')}</span>`;
       }).join('') + '</div>';
     }
 
     renderSidebarTree(nodes, className, docPath) {
-      const currentFull = normalizeDoc(docPath || currentDoc());
+      const currentFull = normalizeDoc(this.volumeDocPath(docPath || currentDoc()));
       return `<ul class="sidebar-menu ${esc(className)}">${this.renderSidebarNodes(nodes, currentFull)}</ul>`;
     }
 
@@ -565,8 +597,8 @@
     }
 
     buildLibmapHtml() {
-      if (!win.LIBRARY_CONFIG?.length) return '<div class="sidebar-menu" style="padding:20px">Navigation unavailable</div>';
-      return '<ul class="sidebar-menu">' + (win.LIBRARY_CONFIG || []).map(col => this.renderSection(col)).join('') + '</ul>';
+      if (!window.LIBRARY_CONFIG?.length) return '<div class="sidebar-menu" style="padding:20px">Navigation unavailable</div>';
+      return '<ul class="sidebar-menu">' + (window.LIBRARY_CONFIG || []).map(col => this.renderSection(col)).join('') + '</ul>';
     }
 
     renderSection(col) {
@@ -604,12 +636,12 @@
 
     getPageHeadings() {
       if (this.mode === 'epub') {
-        const file = normalizeDoc(currentDoc()).split('/').pop();
+        const file = this.volumeDocFile();
         const domHeadings = getDomHeadings($('#content'));
         let domIndex = 0;
         return (this.currentVol?.data?.headings || []).filter(h => normalizeDoc(h.file || '').split('/').pop() === file).map(h => {
           const id = h.id || domHeadings[domIndex++]?.id || null;
-          return { level: h.level || 2, text: h.text || '', id };
+          return { level: h.level !== undefined && h.level !== null ? h.level : 2, text: h.text || '', id };
         }).filter(h => h.id);
       }
       return getDomHeadings($('#content')).map(h => ({
@@ -654,6 +686,7 @@
 
     updateTracking(id) {
       this.activeHeadingId = id;
+      // 当前标题变化后，同时驱动侧栏、桌面 TOC 和移动端自动滚动。
       this.updateSidebarTracking(id);
       this.updateTocTracking(id);
       this.syncSidebar(id);
@@ -669,16 +702,19 @@
     }
 
     updateSidebarTracking(id) {
+      // 纯 libmap 是总目录，不对应 reader 当前正文，保持无高亮。
+      if (this.mode === 'libmap') return;
       const links = this.getSidebarLinks();
       if (!links.length) return;
       this.activeSidebarLink?.classList.remove('sidebar-link--active');
       this.activeSidebarLink = null;
-      const file = normalizeDoc(currentDoc()).split('/').pop() || 'index';
+      const file = this.volumeDocFile();
       const sameFile = a => normalizeDoc(a.dataset.file || '').split('/').pop() === file;
       const match = (id && links.find(a => sameFile(a) && a.dataset.id === id))
         || links.find(a => sameFile(a) && !a.dataset.id)
         || links.find(sameFile);
       if (!match) return;
+      // 先限定同一文件，再匹配锚点，避免不同文档里的同名标题互相误亮。
       match.classList.add('sidebar-link--active');
       this.activeSidebarLink = match;
       expandTo(match, this.navTree.querySelector('.sidebar-menu'));
@@ -710,16 +746,10 @@
       const tree = this.navTree.querySelector('.sidebar-menu');
       if (!tree) return;
       if (this.mode === 'libmap') {
-        const docNorm = normalizePath(docPath || currentDoc());
-        const match = $$('a[data-path]', tree).find(a => normalizePath(a.dataset.path) === docNorm || normalizePath(a.getAttribute('href')?.replace(/^\?doc=/, '')) === docNorm);
-        if (match) {
-          match.classList.add('sidebar-link--active');
-          this.activeSidebarLink = match;
-          expandTo(match, tree);
-        }
+        // 总目录模式只负责导航入口，不表达阅读进度，因此不加 active 样式。
         return;
       }
-      const file = normalizeDoc(docPath || currentDoc()).split('/').pop();
+      const file = this.volumeDocFile(docPath || currentDoc());
       const hash = location.hash.slice(1);
       const links = $$('.sidebar-link', tree);
       let best = null;
@@ -762,7 +792,7 @@
       sessionStorage.removeItem('__reader_pending_doc');
       if (docPath && normalizeDoc(docPath) !== normalizeDoc(currentDoc())) return;
       const tryScroll = () => {
-        const el = doc.getElementById(hash);
+        const el = document.getElementById(hash);
         if (!el) return false;
         scrollToEl(el);
         return true;
@@ -772,7 +802,7 @@
 
     findCollectionByCurrentPath() {
       const path = normalizePath(currentDoc());
-      for (const col of win.LIBRARY_CONFIG || []) {
+      for (const col of window.LIBRARY_CONFIG || []) {
         const base = normalizePath(col.basePath || col.basepath || '');
         if (base && path.startsWith(base)) return col;
       }
@@ -780,5 +810,5 @@
     }
   }
 
-  win.MenuManager = MenuManager;
+  window.MenuManager = MenuManager;
 })();
