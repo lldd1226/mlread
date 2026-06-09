@@ -30,5 +30,11 @@
         "destination": "https://ml.491007.xyz/LENIN/:splat",
         "statusCode": 302
       }
+    ],
+    "rewrites": [
+      {
+        "source": "/:splat",
+        "destination": "/"
+      }
     ]
 }
