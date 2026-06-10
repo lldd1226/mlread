@@ -376,7 +376,7 @@ class ReaderApp {
             const hash = rawPath.includes('#') ? rawPath.split('#')[1] : '';
             const actualUrl = loaded.url || loaded.path || docPath;
             history.replaceState(history.state || {}, '', PathResolver.makeSpa(docPath,hash));
-            this.renderDoc(html, hash ? docPath+'#'+hash : docPath, actualUrl);
+            await this.renderDoc(html, hash ? docPath+'#'+hash : docPath, actualUrl);
             this.revealLoadedContent();
         } catch (error) {
             this.showError(docPath, error.message);
@@ -419,11 +419,11 @@ class ReaderApp {
         });
     }
 
-    renderDoc(html, docPath, finalUrl) {
+    async renderDoc(html, docPath, finalUrl) {
         const parsed = new DOMParser().parseFromString(html, 'text/html');
         this.rewriteDocUrls(parsed, docPath);
         this.rewriteDocAssets(parsed, finalUrl);
-        this.injectDocStyles(parsed, finalUrl);
+        await this.injectDocStyles(parsed, finalUrl);
         const content = $('#content');
         injectContentLang(parsed, content);
         content.innerHTML = (parsed.body.querySelector('div.prose#content') || parsed.body).innerHTML;
@@ -439,16 +439,19 @@ class ReaderApp {
         $('#toc-desktop').style.display = '';
     }
 
-    injectDocStyles(parsed, finalUrl) {
+    async injectDocStyles(parsed, finalUrl) {
         $$('.dynamic-doc-style').forEach(el => el.remove());
+        let waits=[];
         parsed.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
             const href = link.getAttribute('href');
             if (!href || /\/?reader\.css(?:[?#].*)?$/i.test(href)) return;
             const el = link.cloneNode(false);
             el.classList.add('dynamic-doc-style');
             el.href = PathResolver.resolveResource(finalUrl, href);
+            waits.push(new Promise(resolve => { el.onload = el.onerror = resolve; setTimeout(resolve, 5000); }));
             document.head.appendChild(el);
         });
+        await Promise.allSettled(waits);
         parsed.querySelectorAll('style').forEach(style => {
             const el = style.cloneNode(true);
             el.classList.add('dynamic-doc-style');
