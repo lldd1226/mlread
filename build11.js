@@ -13,7 +13,16 @@ try { cheerio = require('cheerio'); } catch { console.log('Tip: cheerio not foun
 
 const normPath = p => p.replace(/\\/g, '/').replace(/\/+$/, '');
 const ensure = async dir => { try { await fs.mkdir(dir, { recursive: true }); } catch { } };
-
+const joinUrlPath = (...parts) => {
+  const raw = parts.filter(v => v != null && String(v) !== '').join('/');
+  return raw.replace(/([^:]\/)\/+/g, '$1').replace(/\/+$/, '');
+};
+const itemLabel = item => item?.volume || item?.label || item?.title || String(item?.id ?? '');
+const isIndexHome = item => {
+  const raw = String(item?.path || '').trim().replace(/[?#].*$/, '');
+  if (raw) return /\/index\.x?html?$/i.test(raw);
+  return /^index\.x?html?$/i.test(item?.homePage || 'index.html');
+};
 // ── ConfigLoader ────────────────────────────────────────────────
 class ConfigLoader {
   constructor() {
@@ -336,45 +345,156 @@ class HTMLProcessor {
 }
 
 // ── VolumeIndexBuilder ─────────────────────────────────────────
+class LibraryIndex {
+  constructor(libraryConfig, root = '.') {
+    this.source = libraryConfig || [];
+    this.indexedSource = null;
+    this.root = root;
+    this.entries = [];
+    this.byDir = new Map();
+    this.serializable = { version: 1, byDir: {} };
+    this.ensure();
+  }
+
+  ensure() {
+    const source = this.source || [];
+    if (this.indexedSource === source) return this.entries;
+    const entries = [];
+    const byDir = new Map();
+    const serializableByDir = {};
+    source.forEach((col, colIndex) => {
+      this.addIndexEntry(entries, byDir, serializableByDir, col, null, col, colIndex);
+      (col.groups || []).forEach((group, groupIndex) => {
+        this.addIndexEntry(entries, byDir, serializableByDir, col, group, group, colIndex, groupIndex);
+        (group.items || []).forEach((item, itemIndex) => this.addIndexEntry(entries, byDir, serializableByDir, col, group, item, colIndex, groupIndex, itemIndex));
+      });
+    });
+    this.indexedSource = source;
+    this.entries = entries;
+    this.byDir = byDir;
+    this.serializable = { version: 1, byDir: serializableByDir };
+    return this.entries;
+  }
+
+  addIndexEntry(entries, byDir, serializableByDir, col, group, item, colIndex, groupIndex = null, itemIndex = null) {
+    const homePage = item?.homePage || 'index.html';
+    const rawDir = String(item?.dir || '').trim();
+    let entryPath = '', dir = '';
+
+    if (rawDir && !/^https?:/i.test(rawDir)) {
+      entryPath = homePage === 'index.html' ? rawDir : joinUrlPath(rawDir, homePage);
+      dir = normPath(rawDir.replace(/^\/+/, ''));
+    } else {
+      entryPath = String(item?.path || '').trim();
+      if (!entryPath) {
+        const id = item?.id;
+        const base = group?.basePath || col?.basePath || '';
+        if (id != null && id !== '' && base) entryPath = joinUrlPath(base, id, homePage);
+      }
+      if (!entryPath || /^https?:/i.test(entryPath)) return;
+      const cleanPath = normPath(entryPath.replace(/[?#].*$/, '').replace(/^\/+/, ''));
+      dir = cleanPath.replace(/\/[^/]+$/i, '');
+    }
+    if (!dir) return;
+
+    const coord = itemIndex != null ? [colIndex, groupIndex, itemIndex] : groupIndex != null ? [colIndex, groupIndex] : [colIndex];
+    let entry = { col, group, item, path: entryPath, dir, colIndex, groupIndex, itemIndex };
+    if (entry.col && !entry.col.basePath) {
+      if (entry.col===entry.item) {
+        entry.item = null;
+      }
+      entry.col = null;
+    };
+    const key = dir.replace(/^\/+/, '').toLowerCase();
+    entries.push(entry);
+    byDir.set(key, entry);
+    serializableByDir[key] = coord;
+  }
+
+  detectVolume(path, findcol = false, predicate = null) {
+    let dir = normPath(String(path || '').replace(/[?#].*$/, '').replace(/^\/+/, ''));
+    dir = /\.[^/]+$/.test(dir.split('/').pop() || '') ? dir.replace(/\/[^/]+$/, '') : dir;
+    if (!dir) return null;
+    this.ensure();
+    let best = null;
+    for (;;) {
+      const entry = this.byDir.get(dir.replace(/^\/+/, '').toLowerCase());
+      if (entry) {
+        if (findcol && entry.col && entry.col.basePath) return entry.col;
+        if (!predicate || predicate(entry)) {
+          best = entry;
+          break;
+        }
+      }
+      const next = dir.replace(/\/[^/]+$/, '');
+      if (!next || next === dir) break;
+      dir = next;
+    }
+    return best;
+  }
+
+  breadcrumb(path, currentLabel, esc, site = '') {
+    const parts = normPath(String(path || '').replace(/^\/+/, '')).split('/').filter(Boolean);
+    const context = this.detectVolume(path);
+
+    const crumbs = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const dir = parts.slice(0, i + 1).join('/');
+      const key = dir.replace(/\/index\.x?html?$/i, '').replace(/\.x?html?$/i, '').toLowerCase();
+      const rawHit = this.byDir.get(key);
+      const hit = rawHit && (!context || rawHit.col === context.col) ? rawHit : null;
+      const labelSource = hit?.item;
+      const label = currentLabel && i === parts.length - 1 ? currentLabel : (itemLabel(labelSource) || part);
+
+      if (i === parts.length - 1) {
+        crumbs.push(`<span class="crumb current">${esc(label)}</span>`);
+        continue;
+      }
+
+      const mechanicalPath = dir + '/';
+      const mechanicalIndexPath = mechanicalPath + 'index.html';
+      const libmapPath = hit?.path || '';
+      const sameAsMechanical = libmapPath.replace(/^\/+/, '').replace(/[?#].*$/, '') === mechanicalIndexPath;
+      const hrefPath = libmapPath && !sameAsMechanical ? libmapPath : mechanicalPath;
+      const href = /^https?:/i.test(hrefPath)
+        ? hrefPath
+        : site ? site + (hrefPath.startsWith('/') ? hrefPath : '/' + hrefPath)
+          : (hrefPath.startsWith('/') ? hrefPath : '/' + hrefPath);
+
+      crumbs.push(`<a class="crumb" href="${esc(href)}">${esc(label)}</a>`);
+    }
+
+    const result = crumbs.join('<span class="crumb-sep">/</span>');
+    return result;
+  }
+}
+
 class VolumeIndexBuilder {
-  constructor(config,pathMatcher) {
+  constructor(config,pathMatcher, libraryIndex) {
     this.config = config;
     this.esc = config.esc || (t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
     this.pm = pathMatcher;
+    this.libraryIndex = libraryIndex;
   }
 
-  _eachItem(libraryConfig, cb) {
-    for (const col of libraryConfig) {
-      for (const group of col.groups || []) {
-        for (const item of group.items || []) cb(col, group, item);
-      }
-    }
-  }
-
-  collectVolumePaths(libraryConfig) {
+  collectVolumePaths() {
     const paths = new Set();
-    this._eachItem(libraryConfig, (_c, _g, item) => {
-      const p = item.path || '';
-      if (!p.endsWith('/index.html')) return;
-      const dir = p.replace(/^\//, '').replace(/\/index\.html$/, '');
-      if (!this.pm.isCopyOnly(dir)) paths.add(dir + '/index.html');
-    });
+    for (const entry of this._collectVolumeEntries()) {
+      if (this.pm.isCopyOnly(entry.dir)) continue;
+      paths.add(entry.dir + '/index.html');
+    }
     return paths;
   }
 
-  _collectVolumes(libraryConfig) {
-    const volumes = new Map();
-    this._eachItem(libraryConfig, (col, group, item) => {
-      const p = item.path || '';
-      if (!p.endsWith('/index.html')) return;
-      const dir = p.replace(/^\//, '').replace(/\/index\.html$/, '');
-      if (!dir || volumes.has(dir)) return;
-      volumes.set(dir, {
-        dir, path: p, label: item.label || item.title || '',
-        collectionId: col.id, collectionLabel: col.label, groupLabel: group.label
-      });
-    });
-    return [...volumes.values()];
+  _collectVolumeEntries() {
+    return this.libraryIndex.ensure()
+      .filter(entry => entry.itemIndex != null && isIndexHome(entry.item))
+      .sort((a, b) =>
+        (a.colIndex - b.colIndex) ||
+        ((a.groupIndex ?? -1) - (b.groupIndex ?? -1)) ||
+        ((a.itemIndex ?? -1) - (b.itemIndex ?? -1))
+      );
   }
 
   _buildTocHtml(headings) {
@@ -402,9 +522,9 @@ class VolumeIndexBuilder {
     return render(root.children);
   }
 
-  async buildAll(libraryConfig, dist) {
+  async buildAll(dist) {
     const pm = new PathMatcher(this.config.args.only, this.config.args.copyOnly, this.config.args.skip);
-    const volumes = this._collectVolumes(libraryConfig).filter(v => !pm.isCopyOnly(v.dir) && pm.shouldBuild(v.dir));
+    const volumes = this._collectVolumeEntries().filter(v => !pm.isCopyOnly(v.dir) && pm.shouldBuild(v.dir));
     let generated = 0;
     for (const vol of volumes) {
       if (await this._buildOne(vol, dist)) generated++;
@@ -412,12 +532,12 @@ class VolumeIndexBuilder {
     return { generated, volumes };
   }
 
-  async _buildOne(vol, dist) {
-    const sourceDir = path.join(this.config.ROOT, vol.dir);
-    const outputJs = path.join(dist, vol.dir, 'index.js');
-    const outputHtml = path.join(dist, vol.dir, 'index.html');
+  async _buildOne(entry, dist) {
+    const sourceDir = path.join(this.config.ROOT, entry.dir);
+    const outputJs = path.join(dist, entry.dir, 'index.js');
+    const outputHtml = path.join(dist, entry.dir, 'index.html');
 
-    let files = [], title = vol.label, preNavHtml = '', lang = 'zh', headExtras = '';
+    let files = [], title = itemLabel(entry.item), preNavHtml = '', lang = 'zh', headExtras = '';
 
     const jsonPath = path.join(sourceDir, 'index.json');
     let jsonSuccess = false;
@@ -454,12 +574,12 @@ class VolumeIndexBuilder {
         if (headings.length) {
           files = [{ file: 'index.html', title: parts.title || title, headings: headings.map(h => ({ ...h, filename: 'index.html' })) }];
         } else if (!files.length) {
-          console.warn(`[Index] No headings or files for ${vol.dir}, skipping`);
+          console.warn(`[Index] No headings or files for ${entry.dir}, skipping`);
           return false;
         }
       }
     } else if (!jsonSuccess) {
-      console.warn(`[Index] No index.html or index.json for ${vol.dir}, skipping`);
+      console.warn(`[Index] No index.html or index.json for ${entry.dir}, skipping`);
       return false;
     }
 
@@ -471,8 +591,8 @@ class VolumeIndexBuilder {
     }
 
     const data = {
-      version: 1, title, volumePath: '/' + vol.dir + '/',
-      collectionId: vol.collectionId, collectionLabel: vol.collectionLabel, groupLabel: vol.groupLabel,
+      version: 1, title, volumePath: '/' + entry.dir + '/',
+      collectionId: entry.col?.id, collectionLabel: entry.col?.label, groupLabel: entry.group?.label,
       files, headings: allHeadings
     };
 
@@ -480,7 +600,7 @@ class VolumeIndexBuilder {
     await fs.writeFile(outputJs, `export default ${JSON.stringify(data)};`, 'utf-8');
 
     if (this.config.generateTemplate) {
-      const depth = vol.dir.split('/').length;
+      const depth = entry.dir.split('/').length;
       const rootPrefix = Array(depth).fill('..').join('/');
       const tocHtml = allHeadings.length ? this._buildTocHtml(allHeadings) : '<li style="color:var(--text-3);font-size:12px;padding:8px 20px">No contents</li>';
 
@@ -496,16 +616,12 @@ class VolumeIndexBuilder {
       const innerHead = titleBlockHtml || `<h2 class="vol-index-title">${this.esc(data.title || 'Contents')}</h2>`;
       const bodyHtml = innerHead + (remainingPreNav || '') + `<nav class="doc-toc doc-toc--continuous" aria-label="Volume Contents"><ul>${tocHtml}</ul></nav>`;
 
-      const breadcrumbParts = data.volumePath.replace(/^\/|\/$/g, '').split('/');
-      const breadcrumbHtml = breadcrumbParts.map((part, i) => i === breadcrumbParts.length - 1
-        ? `<span class="crumb current">${this.esc(part)}</span>`
-        : `<a class="crumb" href="${this.config.SITE ? this.config.SITE + '/' : '/'}${breadcrumbParts.slice(0, i + 1).join('/')}/index.html">${this.esc(part)}</a>`
-      ).join('<span class="crumb-sep">/</span>');
+      const breadcrumbHtml = this.libraryIndex.breadcrumb(entry.dir, '', this.esc, this.config.SITE);
 
       await fs.writeFile(outputHtml, this.config.generateTemplate({
         title, bodyHtml,
         headExtras: headExtras ? headExtras.split('\n').filter(Boolean) : [],
-        meta: { path: vol.path, collection: vol.collectionId, title, lang, isVolumeIndex: true, indexJsPath: './index.js' },
+        meta: { path: entry.path, collection: entry.col?.id, title, lang, isVolumeIndex: true, indexJsPath: './index.js' },
         root: this.config.SITE || rootPrefix || '.',
         breadcrumb: breadcrumbHtml,
         hasToc: false, hasVolIndex: true,
@@ -519,9 +635,10 @@ class VolumeIndexBuilder {
 
 // ── PageRenderer ───────────────────────────────────────────────
 class PageRenderer {
-  constructor(config, libraryConfig) {
+  constructor(config, libraryConfig, libraryIndex) {
     this.config = config;
     this.libraryConfig = libraryConfig || [];
+    this.libraryIndex = libraryIndex;
     this._volCache = new Map();
   }
 
@@ -529,20 +646,13 @@ class PageRenderer {
     const dir = path.dirname(itemPath).replace(/\\/g, '/');
     if (this._volCache.has(dir)) return this._volCache.get(dir);
 
-    let bestLen = 0, bestJs = null, bestLabel = null, bestDir = null;
-    for (const col of this.libraryConfig) {
-      for (const group of col.groups || []) {
-        for (const item of group.items || []) {
-          const itemDir = (item.path || '').replace(/^\/+|\/+$/g, '').replace(/\\/g, '/').replace(/\/index\.html$/i, '');
-          if (!itemDir || (dir !== itemDir && !dir.startsWith(itemDir + '/'))) continue;
-          if (itemDir.length <= bestLen) continue;
-          bestLen = itemDir.length;
-          const depth = dir.split('/').length - itemDir.split('/').length;
-          bestJs = depth === 0 ? './index.js' : '../'.repeat(depth) + 'index.js';
-          bestLabel = item.label || item.title || null;
-          bestDir = itemDir;
-        }
-      }
+    const hit = this.libraryIndex.detectVolume(dir, false, h => h.item && isIndexHome(h.item));
+    let bestJs = null, bestLabel = null, bestDir = null;
+    if (hit) {
+      bestDir = hit.dir;
+      const depth = dir.split('/').length - bestDir.split('/').length;
+      bestJs = depth === 0 ? './index.js' : '../'.repeat(depth) + 'index.js';
+      bestLabel = itemLabel(hit.item) || null;
     }
 
     const info = { jsPath: bestJs, label: bestLabel || 'Contents', volDir: bestDir };
@@ -556,14 +666,11 @@ class PageRenderer {
     const { lang, title: pageTitle, body, headExtras } = HTMLProcessor.extractHtmlParts(rawHtml);
     const processedBody = HTMLProcessor.processFootnoteRefs(body);
 
-    const colId = item.path.split('/')[0];
+    const itemHit = this.libraryIndex.detectVolume(item.path);
+    const colId = itemHit?.col?.id || item.path.split('/')[0];
     const local = { prev: item.prev || null, next: item.next || null };
 
-    const parts = item.path.split('/');
-    const breadcrumb = parts.map((part, i) => i === parts.length - 1
-      ? `<span class="crumb current">${esc(part)}</span>`
-      : `<a class="crumb" href="${esc((SITE ? `${SITE}/` : '/') + parts.slice(0, i + 1).join('/') + '/index.html')}">${esc(part)}</a>`
-    ).join('<span class="crumb-sep">/</span>');
+    const breadcrumb = this.libraryIndex.breadcrumb(item.path, '', esc, SITE);
 
     const volInfo = this._getVolumeInfo(item.path);
     const finalHtml = generateTemplate({
@@ -589,15 +696,15 @@ class PageRenderer {
 
   generateCardIndex(libraryConfig) {
     const { esc, SITE } = this.config;
-    const cards = libraryConfig.map(col => {
+    const entries = this.libraryIndex.ensure();
+    const cards = libraryConfig.map((col, colIndex) => {
       let href;
-      const isExternal = col.path && /^https?:\/\//.test(col.path);
-      if (isExternal) href = col.path;
-      else if (col.basePath) {
-        const base = col.basePath.replace(/^\//, '').replace(/\/$/, '');
-        href = SITE ? `${SITE}/${base}/index.html` : `/${base}/index.html`;
-      } else if (col.path) {
-        href = col.path.startsWith('/') ? (SITE ? `${SITE}${col.path}` : col.path) : (SITE ? `${SITE}/${col.path}` : `/${col.path}`);
+      const colEntry = entries.find(entry => entry.colIndex === colIndex && entry.groupIndex == null && entry.itemIndex == null);
+      const colPath = colEntry?.path || String(col.path || '').trim();
+      const isExternal = colPath && /^https?:\/\//.test(colPath);
+      if (isExternal) href = colPath;
+      else if (colPath) {
+        href = colPath.startsWith('/') ? (SITE ? `${SITE}${colPath}` : colPath) : (SITE ? `${SITE}/${colPath}` : `/${colPath}`);
       } else href = SITE ? `${SITE}/` : '/';
 
       return `<a href="${esc(href)}" class="library-card"${isExternal ? ' target="_blank" rel="noopener"' : ''}>
@@ -637,15 +744,17 @@ class BuildEngine {
     await ensure(DIST);
     await ensure(path.join(DIST, 'assets'));
 
+    console.log(`   Loading collection(s) from config`);
     const rawConfig = config.loadUserConfig();
+    const libraryIndex = new LibraryIndex(rawConfig, ROOT);
     console.log(`   Loaded ${rawConfig.length} collection(s) from config`);
 
     const pathMatcher = new PathMatcher(args.only, args.copyOnly, args.skip);
     const scanner = new FileScanner(ROOT, pathMatcher);
-    const renderer = new PageRenderer(config, rawConfig);
-    const volBuilder = new VolumeIndexBuilder(config, pathMatcher);
-    const volIndexPaths = volBuilder.collectVolumePaths(rawConfig);
-    const { generated: volIndexCount } = await volBuilder.buildAll(rawConfig, DIST);
+    const renderer = new PageRenderer(config, rawConfig, libraryIndex);
+    const volBuilder = new VolumeIndexBuilder(config, pathMatcher, libraryIndex);
+    const volIndexPaths = volBuilder.collectVolumePaths();
+    const { generated: volIndexCount } = await volBuilder.buildAll(DIST);
     console.log(`   Volume index.js: ${volIndexCount} generated`);
 
     console.log('\nDeploying reader shell assets');
@@ -661,7 +770,9 @@ class BuildEngine {
     if (fsSync.existsSync(libmapSrc)) {
       const code = fsSync.readFileSync(libmapSrc, 'utf-8');
       const match = code.match(/LIBRARY_CONFIG\s*=\s*(\[[\s\S]*\]);/);
-      await fs.writeFile(path.join(DIST, 'assets', 'libmap.js'), match ? `window.LIBRARY_CONFIG=${match[1]};` : code, 'utf-8');
+      const libmapOut = (match ? `window.LIBRARY_CONFIG=${match[1]};` : code)
+        + `\nwindow.LIBRARY_INDEX=${JSON.stringify(libraryIndex.serializable)};\n`;
+      await fs.writeFile(path.join(DIST, 'assets', 'libmap.js'), libmapOut, 'utf-8');
       console.log(`   libmap.js -> assets/libmap.js (${match ? 'browser-wrapped' : 'raw copy'})`);
     }
 
