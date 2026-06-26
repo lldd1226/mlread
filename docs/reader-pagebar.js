@@ -2,7 +2,7 @@
   'use strict';
 
   const C = window.ReaderCore || {};
-  const { $, $$, onScrollFrame, hasSelection, scrollToEl } = C;
+  const { $, $$, onScrollFrame, scrollToEl } = C;
   const navMenu = () => window.__NAV__?.menu || window.__NAV__ || null;
 
   class PageBarManager {
@@ -22,13 +22,15 @@
       this.noticeTimer = null;
       this.quietUntil = 0;
       this.bag = new C.EventBag();
+      this.lang = this.detectContentLang();
     }
 
     init() {}
 
-    scanContent(container) {
+    scanContent(container, lang) {
       this.reset(false);
       this.content = container || null;
+      this.lang = this.detectContentLang(container, lang);
       if (!container) return;
       this.pageNumbers = $$('a[id^="S"]', container)
         .filter(anchor => !this.isFootnoteAsideElement(anchor))
@@ -43,6 +45,15 @@
         return;
       }
       this.setup();
+    }
+
+    detectContentLang(container = this.content, lang = null) {
+      return [
+        lang,
+        container?.getAttribute?.('lang'),
+        document.body?.getAttribute('lang'),
+        document.documentElement?.getAttribute('lang')
+      ].find(v => String(v || '').trim())?.trim().toLowerCase() || '';
     }
 
     reset(clearContent = true) {
@@ -86,9 +97,9 @@
     }
 
     parsePageAnchor(id) {
-      let match = String(id).match(/^S(\d+)$/);
+      let match = String(id).match(/^[Ss](\d+)$/);
       if (match) return { page: match[1], label: match[1], citePage: match[1] };
-      match = String(id).match(/^S(.+?)-p?(\d+)$/i);
+      match = String(id).match(/^[Ss](.+?)-p?(\d+)$/i);
       if (!match) return null;
       const scope = match[1].replace(/^[-_]+|[-_]+$/g, '');
       const page = match[2];
@@ -120,13 +131,13 @@
     }
 
     updateFromScroll() {
-      if (!this.ready || hasSelection()) return;
+      if (!this.ready) return;
       this.reveal({ rect: this.pointRect(Math.max(80, innerHeight * 0.42)), source: 'scroll' });
     }
 
     handleContentClick(e) {
       const target = e.target?.nodeType === 1 ? e.target : e.target?.parentElement;
-      if (!target || this.shouldIgnoreTarget(target) || hasSelection()) return;
+      if (!target || this.shouldIgnoreTarget(target)) return;
       this.reveal({ rect: this.pointRect(e.clientY), source: 'content-click', force: true, toggleAny: true, sticky: true });
     }
 
@@ -233,7 +244,7 @@
       marker.setAttribute('role', 'button');
       marker.setAttribute('aria-live', 'polite');
       marker.tabIndex = 0;
-      marker.textContent = info.scope ? info.label : 'S. ' + info.label;
+      marker.textContent = this.formatCitationPage(info);
       marker.setAttribute('aria-label', marker.textContent + ' Quellenangabe kopieren');
       marker.dataset.page = info.citePage || info.label;
       marker.dataset.pageAnchorId = info.id || '';
@@ -299,13 +310,20 @@
         link.style.display = 'none';
         delete link.dataset.page;
         delete link.dataset.pageAnchorId;
+        link.href = '#';
         return;
       }
       const info = typeof pageInfo === 'object' ? pageInfo : { label: pageInfo, citePage: pageInfo };
-      link.textContent = info.scope ? info.label : 'S. ' + info.label;
+      link.textContent = this.formatCitationPage(info);
       link.style.display = '';
       link.dataset.page = info.citePage || info.label;
-      if (info.id) link.dataset.pageAnchorId = info.id;
+      if (info.id) {
+        link.dataset.pageAnchorId = info.id;
+        link.href = C.readerHref ? C.readerHref(this.currentDocPath(), info.id) : '#' + info.id;
+      } else {
+        delete link.dataset.pageAnchorId;
+        link.href = '#';
+      }
       this.bindCopy(link);
     }
 
@@ -392,28 +410,36 @@
       const stripRoot = C.PathResolver?.stripRoot;
       return typeof stripRoot === 'function' ? stripRoot(location.pathname) : location.pathname;
     }
-
+      
     generateCitation(page) {
       const path = this.currentDocPath();
       const vol = this.detectVolume(path);
       const cit = this.findCitation(path, vol);
       const col = vol?.col || null;
-      const format = cit?.pageParam || (col?.id === 'mecw' ? 'p. ${page}' : 'S. ${page}');
-      const pageText = this.formatCitationPage(page, format);
+      const pageText = this.formatCitationPage(page, cit?.pageParam);
       if (cit && (cit.prefix || cit.title || cit.year || cit.volume || cit.publisher)) {
         return [cit.prefix, cit.title, cit.volume, cit.publisher, cit.year].filter(Boolean).join(', ') + ', ' + pageText;
       }
       const id = col?.id || '';
       if (id === 'mew') return 'MEW, ' + pageText;
+      if (id === 'mew-zh') return '《马克思恩格斯全集》, ' + pageText;
       if (id === 'mega') return 'MEGA, ' + pageText;
       if (id === 'mecw') return 'MECW, ' + pageText;
       if (id === 'hegel') return 'G.W.F.Hegel Werke, ' + pageText;
       return (id ? id.toUpperCase() + ', ' : '') + pageText;
     }
 
-    formatCitationPage(page, pattern) {
-      const value = String(page);
-      return /(^|,\s)(S|p)\.\s/i.test(value) ? value : pattern.replace('${page}', value);
+    formatCitationPage(pageInfo, pattern) {
+      const info = typeof pageInfo === 'object' ? pageInfo : null;
+      if (info?.scope) return info.label;
+      const value = String(info ? (info.label ?? info.page ?? '') : pageInfo);
+      const lang = this.lang || '';
+      const pagenumtext = pattern?.replace('${page}', value)
+        || (lang.startsWith('de') ? 'S. ' + value
+        : lang.startsWith('ru') ? 'стр. ' + value
+          : lang.startsWith('zh') ? '第' + value + '页'
+            : 'p. ' + value);
+      return /(^|,\s)((S|p)\.\s|стр\.\s)|第.+页/i.test(value) ? value : pagenumtext;
     }
 
     findCitation(path, vol = this.detectVolume(path)) {
