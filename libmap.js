@@ -564,7 +564,7 @@ window.LIBRARY_CONFIG = [
         label: "English Translations",
         items: [
           { id: "ps", kind: "book", label: "Phenomenology of Spirit (by Terry Pinkard)", reldir: "HGPS", dir: "/docs/HEGEL/HGPS/" },
-          { id: "ps1", kind: "book", reldir: "HGPS-1", label: "Phenomenology of Spirit (by Michael Inwood)", dir: "/HEGEL/HGPS-1/" },
+          { id: "ps1", kind: "book", reldir: "HGPS-1", label: "Phenomenology of Spirit (by Michael Inwood)", dir: "/docs/HEGEL/HGPS-1/" },
           { id: "gl", kind: "book", label: "Science of Logic (Greater Logic, by A.V.Miller)", reldir: "HGSL", dir: "/docs/HEGEL/HGSL/" },
           { id: "sl", kind: "book", label: "Shorter Logic (by K.Brinkmann & D.O. Dahlstrom)", reldir: "HEPL", dir: "/docs/HEGEL/HEPL/" }
         ]
