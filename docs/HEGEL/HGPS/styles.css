@@ -62,12 +62,6 @@ hr {
     margin: 1em auto 1em auto;
     text-align:center;
 }
-.cover-image {{
-            max-width: 100%;
-            height: auto;
-            margin: 20px 0;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }}
 .remark {
     display: block;
     margin-left: 6.25%;
@@ -99,9 +93,6 @@ a:visited {
 a:active  {
   color: #a3d4ff;
   text-decoration: underline;
-}
-h1,h2,h3,h4,h5,h6,b {
- color:  #F0F0F0;
 }
 a b,b a {
  color:   #64ABD5;
